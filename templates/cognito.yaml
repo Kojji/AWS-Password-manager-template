@@ -100,6 +100,9 @@ Outputs:
   UserPool:
     Description:  User Pool
     Value: !Ref UserPool
+  UserPoolArn:
+    Description:  User Pool
+    Value: !GetAtt UserPool.Arn
   WebAppCognitoClient:
     Description: User Pool Client
     Value: !Ref WebAppCognitoClient

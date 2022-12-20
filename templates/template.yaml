@@ -45,6 +45,13 @@ Resources:
         CallbackURLLogin: http://localhost
         CallbackURLLogout: http://localhost
   
+  AppAPI:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: ./api-lambda.yaml
+      Parameters: 
+        UserPoolArn: !GetAtt Cognito.Outputs.UserPoolArn
+
   # CreateTablesAtDeployment:
   #   Type: AWS::CloudFormation::CustomResource
   #   DependsOn: TableCreationFunction

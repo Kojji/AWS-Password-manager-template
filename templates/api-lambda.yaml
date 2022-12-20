@@ -1,0 +1,57 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Password Manager API - REST API and Lambda functions for the endpoints
+Transform: AWS::Serverless-2016-10-31
+
+Parameters:
+  UserPoolArn:
+    Description: User Pool ARN to be used on authorizer
+    Type: String
+
+Globals:
+  Function:
+    Timeout: 3
+    MemorySize: 128
+
+Resources:
+  # Password Manager API
+  MyAPI:
+    Type: AWS::Serverless::Api 
+    Description: Main API
+    Properties:
+      EndpointConfiguration: REGIONAL
+      StageName: dev
+      Cors:
+        AllowMethods: "'GET, OPTIONS'"
+        AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,Key,X-Api-Key,X-Amz-Security-Token'"
+        AllowOrigin: "'*'"
+        MaxAge: "'500'"
+      Auth:
+        AddDefaultAuthorizerToCorsPreflight: false
+        DefaultAuthorizer: MyCognitoAuthorizer
+        Authorizers:
+          MyCognitoAuthorizer:
+            UserPoolArn: !Ref UserPoolArn
+  
+  # GET / - root endpoint
+  RootEndpoint:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: index.handler
+      Runtime: nodejs16.x
+      InlineCode: >
+        exports.handler = async (event) => {
+          const response = {
+              statusCode: 200,
+              body: JSON.stringify('API Working!'),
+          };
+          return response;
+        };
+      Events:
+        RootGet:
+          Type: Api
+          Properties:
+            Path: /
+            Method: get
+            RestApiId: !Ref MyAPI
+
+
