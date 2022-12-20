@@ -3,6 +3,9 @@ Description: Passremind API - Aurora database and tables setup
 Transform: AWS::Serverless-2016-10-31
 
 Parameters:
+  DBTableCreationFunctionName:
+    Description: Table creation function.
+    Type: String
   DBClusterName:
     Description: Aurora DB cluster name.
     Type: String
@@ -54,10 +57,11 @@ Resources:
         MaxCapacity: 4
         SecondsUntilAutoPause: 3600
 
-  # getAllItemsFunction:
+  # function to create tables:
   TableCreationFunction:
     Type: AWS::Serverless::Function
     Properties:
+      FunctionName: !Ref DBTableCreationFunctionName
       Handler: index.handler
       InlineCode: >
         const AWS = require("aws-sdk");

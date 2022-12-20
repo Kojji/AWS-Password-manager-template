@@ -3,6 +3,9 @@ Description: Passremind API - template for a personal use password manager API
 Transform: AWS::Serverless-2016-10-31
 
 Parameters:
+  DBTableCreationFunctionName:
+    Description: Table creation function.
+    Type: String
   DBClusterName:
     Description: Aurora DB cluster name.
     Type: String
@@ -28,9 +31,10 @@ Resources:
     Properties:
       TemplateURL: ./aurora-setup.yaml
       Parameters: 
-        DBClusterName: DBClusterName
-        DatabaseName: DatabaseName
-        DBAdminUserName: DBAdminUserName
+        DBTableCreationFunctionName: !Ref DBTableCreationFunctionName
+        DBClusterName: !Ref DBClusterName
+        DatabaseName: !Ref DatabaseName
+        DBAdminUserName: !Ref DBAdminUserName
   
   # CreateTablesAtDeployment:
   #   Type: AWS::CloudFormation::CustomResource
