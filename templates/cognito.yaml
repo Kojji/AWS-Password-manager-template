@@ -1,0 +1,105 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Password Manager API - Cognito user pool and client setup
+Transform: AWS::Serverless-2016-10-31
+
+Parameters:
+  AdminCreateUser:
+    Description: Variable for 'AllowAdminCreateUserOnly' for User Pool
+    Type: String
+    Default: true
+    AllowedValues:
+      - true
+      - false
+  MfaEnable: 
+    Description: Variable to define if MFA is enabled or not
+    Type: String
+    Default: 'OPTIONAL'
+    AllowedValues:
+      - 'ON'
+      - 'OPTIONAL'
+  CallbackURLLogin:
+    Description: Callback URL for the login flow 
+    Type: String
+    Default: http://localhost
+  CallbackURLLogout:
+    Description: Callback URL for the logout flow 
+    Type: String
+    Default: http://localhost
+
+Resources:
+  # Cognito User Pool
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: !Ref AdminCreateUser
+      AutoVerifiedAttributes:
+        - email
+      Schema:
+        - AttributeDataType: String
+          Mutable: true
+          Name: given_name
+          Required: true
+        - AttributeDataType: String
+          Mutable: true
+          Name: family_name
+          Required: true
+        - AttributeDataType: String
+          Mutable: false
+          Name: email
+          Required: true
+      UsernameAttributes:
+        - email
+      UsernameConfiguration:
+        CaseSensitive: false
+      MfaConfiguration: !Ref MfaEnable
+      EnabledMfas: 
+        - SOFTWARE_TOKEN_MFA
+
+  # Cognito User Pool Client
+  WebAppCognitoClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      AccessTokenValidity: 1
+      AllowedOAuthFlows:
+        - implicit
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthScopes:
+        - email
+        - openid
+        - profile
+        - aws.cognito.signin.user.admin
+      CallbackURLs:
+        - !Ref CallbackURLLogin
+      EnableTokenRevocation: true
+      ExplicitAuthFlows:
+        - ALLOW_ADMIN_USER_PASSWORD_AUTH
+        - ALLOW_CUSTOM_AUTH
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_USER_SRP_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+      IdTokenValidity: 1
+      LogoutURLs:
+        - !Ref CallbackURLLogout
+      PreventUserExistenceErrors: ENABLED
+      ReadAttributes:
+        - given_name
+        - family_name
+        - email
+        - email_verified
+      RefreshTokenValidity: 1
+      SupportedIdentityProviders:
+        - COGNITO
+      TokenValidityUnits:
+        AccessToken: hours
+        IdToken: hours
+        RefreshToken: days
+      UserPoolId: !Ref UserPool
+
+Outputs:
+  UserPool:
+    Description:  User Pool
+    Value: !Ref UserPool
+  WebAppCognitoClient:
+    Description: User Pool Client
+    Value: !Ref WebAppCognitoClient

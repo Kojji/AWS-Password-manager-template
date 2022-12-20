@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: 2010-09-09
-Description: Passremind API - Aurora database and tables setup
+Description: Password Manager API - Aurora database and tables setup
 Transform: AWS::Serverless-2016-10-31
 
 Parameters:

@@ -36,6 +36,15 @@ Resources:
         DatabaseName: !Ref DatabaseName
         DBAdminUserName: !Ref DBAdminUserName
   
+  Cognito:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: ./cognito.yaml
+      Parameters: 
+        AdminCreateUser: 'true'
+        CallbackURLLogin: http://localhost
+        CallbackURLLogout: http://localhost
+  
   # CreateTablesAtDeployment:
   #   Type: AWS::CloudFormation::CustomResource
   #   DependsOn: TableCreationFunction
