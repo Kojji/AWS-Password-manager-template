@@ -138,9 +138,9 @@ Outputs:
   # SampleTable:
   #   Description: "DynamoDB table"
   #   Value: !Ref SampleTable
-  TableCreationFunctionName:
+  TableCreationFunction:
     Description: Table creation function
-    Value: !GetAtt Database.Outputs.TableCreationFunctionName
+    Value: !GetAtt Database.Outputs.TableCreationFunction
 
   # WebEndpoint:
   #   Description: "API Gateway endpoint URL for Prod stage"

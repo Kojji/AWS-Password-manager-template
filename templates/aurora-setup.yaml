@@ -123,9 +123,9 @@ Resources:
             Resource: !Sub 'arn:aws:rds:${AWS::Region}:${AWS::AccountId}:cluster:${DBClusterName}'
 
 Outputs:
-  TableCreationFunctionName:
+  TableCreationFunction:
     Description: Table creation function
-    Value: !GetAtt TableCreationFunction.name
+    Value: !Ref TableCreationFunction
   SecretArn:
     Description: Secrets Manager Secret ARN
     Value: !Ref DBSecret
