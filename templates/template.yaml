@@ -23,109 +23,15 @@ Parameters:
     ConstraintDescription: Must be between 2 to 16 alphanumeric characters.
 
 Resources:
-  # Secrets Manager secret
-  DBSecret:
-    Type: 'AWS::SecretsManager::Secret'
+  Database:
+    Type: AWS::CloudFormation::Stack
     Properties:
-      Name: !Sub '${DBClusterName}-AuroraUserSecret'
-      Description: RDS database auto-generated user password
-      GenerateSecretString:
-        SecretStringTemplate: !Sub '{"username": "${DBAdminUserName}"}'
-        GenerateStringKey: password
-        PasswordLength: 30
-        ExcludeCharacters: '"@/\'
-
-  # Aurora Serverless DB Cluster with Data API
-  AuroraCluster:
-    Type: 'AWS::RDS::DBCluster'
-    Properties:
-      DBClusterIdentifier: !Ref DBClusterName
-      MasterUsername: !Sub '{{resolve:secretsmanager:${DBSecret}:SecretString:username}}'
-      MasterUserPassword: !Sub '{{resolve:secretsmanager:${DBSecret}:SecretString:password}}'
-      DatabaseName: !Ref DatabaseName
-      Engine: aurora-postgresql
-      EngineMode: serverless
-      EngineVersion: "10.18"
-      # Enable the Data API for Aurora Serverless
-      EnableHttpEndpoint: true
-      ScalingConfiguration:
-        AutoPause: true
-        MinCapacity: 2
-        MaxCapacity: 4
-        SecondsUntilAutoPause: 3600
-
-  # getAllItemsFunction:
-  TableCreationFunction:
-    Type: AWS::Serverless::Function
-    DependsOn: AuroraCluster
-    Properties:
-      Handler: index.handler
-      InlineCode: >
-        const AWS = require("aws-sdk");
-        const rdsDataService = new AWS.RDSDataService();
-        const response = require('cfn-response');
-
-        async function RunCommand(sqlStatement){
-          // Prepare the SQL parameters required for Data API
-          let sqlParams = {
-            secretArn: process.env.SecretArn,
-            resourceArn: process.env.DBClusterArn,
-            sql: sqlStatement,
-            database: process.env.DBName,
-            includeResultMetadata: true,
-          };
-
-          // Use the Data API ExecuteStatement operation to run the SQL command
-          const result = await rdsDataService.executeStatement(sqlParams).promise();
-          return result;
-        }
-
-        exports.handler = async (event, context) => {
-          try {
-            // Log event object and database name to CloudWatch Logs
-            console.log("Starting Table Creation!");
-            console.log("Database Name: ", process.env.DBName);
-
-            // Create SQL statements
-            const sqlCreateUserTable = "CREATE TABLE IF NOT EXISTS users ( id SERIAL PRIMARY KEY, cognito_id VARCHAR(50) NOT NULL UNIQUE, photo VARCHAR(255), name VARCHAR(50) NOT NULL, email VARCHAR(50) NOT NULL );"
-            const sqlCreateEntriesTable = "CREATE TABLE IF NOT EXISTS entries ( id SERIAL PRIMARY KEY, cognito_id VARCHAR(50) NOT NULL, service VARCHAR(50) NOT NULL, description VARCHAR(255), link VARCHAR(127), login VARCHAR(50), password TEXT NOT NULL, marker BOOLEAN, CONSTRAINT fk_customer FOREIGN KEY(cognito_id) REFERENCES users(cognito_id) );"
-            const sqlCreateExtension = "CREATE EXTENSION pgcrypto;"
-            // const sqlSelect = "select table_name from information_schema.tables where table_name = 'users' OR table_name = 'entries';";
-            
-
-            // Run the SQL commands one at a time
-            await RunCommand(sqlCreateUserTable);
-            await RunCommand(sqlCreateEntriesTable);
-            await RunCommand(sqlCreateExtension);
-
-            const responseData = {
-              Data: "tables created!"
-            };
-            response.send(event, context, response.SUCCESS, responseData);
-          } catch (error) {
-            const responseData = {
-              Data: error
-            };
-            response.send(event, context, response.FAILED, responseData);
-          }
-          return;
-        };
-      Runtime: nodejs16.x
-      MemorySize: 128
-      Timeout: 20
-      Environment:
-        Variables:
-          DBClusterArn: !Sub 'arn:aws:rds:${AWS::Region}:${AWS::AccountId}:cluster:${DBClusterName}'
-          DBName: !Ref DatabaseName
-          SecretArn: !Ref DBSecret
-      Policies:
-        - AWSSecretsManagerGetSecretValuePolicy:
-            SecretArn: !Ref DBSecret
-        - Statement:
-          - Effect: Allow
-            Action: 'rds-data:ExecuteStatement'
-            Resource: !Sub 'arn:aws:rds:${AWS::Region}:${AWS::AccountId}:cluster:${DBClusterName}'
-
+      TemplateURL: ./aurora-setup.yaml
+      Parameters: 
+        DBClusterName: DBClusterName
+        DatabaseName: DatabaseName
+        DBAdminUserName: DBAdminUserName
+  
   # CreateTablesAtDeployment:
   #   Type: AWS::CloudFormation::CustomResource
   #   DependsOn: TableCreationFunction
@@ -232,12 +138,9 @@ Outputs:
   # SampleTable:
   #   Description: "DynamoDB table"
   #   Value: !Ref SampleTable
-  SecretArn:
-    Description: Secrets Manager Secret ARN
-    Value: !Ref DBSecret
-  DBAdminUserName:
-    Description: Aurora Database Admin User
-    Value: !Ref DBAdminUserName
+  TableCreationFunctionName:
+    Description: Table creation function
+    Value: !GetAtt Database.Outputs.TableCreationFunctionName
 
   # WebEndpoint:
   #   Description: "API Gateway endpoint URL for Prod stage"
