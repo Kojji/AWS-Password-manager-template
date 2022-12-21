@@ -41,9 +41,12 @@ Resources:
     Properties:
       TemplateURL: ./cognito.yaml
       Parameters: 
-        AdminCreateUser: 'true'
+        AdminCreateUser: 'false'
         CallbackURLLogin: http://localhost
         CallbackURLLogout: http://localhost
+        DBClusterArn: !GetAtt Database.Outputs.DBClusterArn
+        DBName: !Ref DatabaseName
+        SecretArn: !GetAtt Database.Outputs.SecretArn
   
   AppAPI:
     Type: AWS::CloudFormation::Stack
@@ -51,7 +54,6 @@ Resources:
       TemplateURL: ./api-lambda.yaml
       Parameters: 
         UserPoolArn: !GetAtt Cognito.Outputs.UserPoolArn
-
   # CreateTablesAtDeployment:
   #   Type: AWS::CloudFormation::CustomResource
   #   DependsOn: TableCreationFunction

@@ -136,3 +136,6 @@ Outputs:
   DBAdminUserName:
     Description: Aurora Database Admin User
     Value: !Ref DBAdminUserName
+  DBClusterArn:
+    Description: Aurora Database Cluster ARN
+    Value: !Sub 'arn:aws:rds:${AWS::Region}:${AWS::AccountId}:cluster:${DBClusterName}'

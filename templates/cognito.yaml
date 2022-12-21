@@ -6,7 +6,7 @@ Parameters:
   AdminCreateUser:
     Description: Variable for 'AllowAdminCreateUserOnly' for User Pool
     Type: String
-    Default: true
+    Default: false
     AllowedValues:
       - true
       - false
@@ -25,6 +25,15 @@ Parameters:
     Description: Callback URL for the logout flow 
     Type: String
     Default: http://localhost
+  DBClusterArn:
+    Description: Aurora DB cluster Arn.
+    Type: String
+  DBName:
+    Description: Aurora database name.
+    Type: String
+  SecretArn: 
+    Description: Secrets Manager Secret ARN
+    Type: String
 
 Resources:
   # Cognito User Pool
@@ -55,6 +64,13 @@ Resources:
       MfaConfiguration: !Ref MfaEnable
       EnabledMfas: 
         - SOFTWARE_TOKEN_MFA
+
+  # Cognito User Pool Domain 
+  UserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties: 
+      Domain: password-manager-login
+      UserPoolId: !Ref UserPool
 
   # Cognito User Pool Client
   WebAppCognitoClient:
@@ -95,6 +111,68 @@ Resources:
         IdToken: hours
         RefreshToken: days
       UserPoolId: !Ref UserPool
+
+   # User Register Function
+  UserRowCreation:
+    Type: AWS::Serverless::Function
+    Properties:
+      Description: Function to auto create user on cognito registrer.
+      Handler: index.handler
+      Runtime: nodejs16.x
+      InlineCode: >
+        var AWS = require('aws-sdk');
+        const rdsDataService = new AWS.RDSDataService();
+
+        exports.handler = (event, context, callback) => {
+            // TODO implement
+            let secretARN = process.env.SecretArn
+            let clusterARN = process.env.DBClusterArn
+            let databaseName = process.env.DBName
+
+            if(event.triggerSource !== 'PostConfirmation_ConfirmSignUp') {
+              callback(null, event)
+            }
+
+            let sqlParams = {
+                secretArn: secretARN,
+                resourceArn: clusterARN,
+                sql: `INSERT INTO users (cognito_id, name, email) VALUES ('${event.request.userAttributes.sub}', '${event.request.userAttributes.given_name}', '${event.request.userAttributes.email}');`,
+                database: databaseName,
+                includeResultMetadata: true
+              }
+              
+            rdsDataService.executeStatement(sqlParams, function (err, data) {
+              if (err) {
+                // error
+                console.log(err)
+                callback(null, event)
+              } else {
+                // init
+                console.log(event.request.userAttributes.sub + ' created successfully')
+                callback(null, event)
+              }
+            }
+          )
+        };
+      Environment:
+        Variables:
+          DBClusterArn: !Ref DBClusterArn
+          DBName: !Ref DBName
+          SecretArn: !Ref SecretArn
+      Events:
+        CognitoEvent:
+          Type: Cognito
+          Properties:
+            UserPool: !Ref UserPool
+            Trigger: PostConfirmation
+      Policies:
+        - AWSSecretsManagerGetSecretValuePolicy:
+            SecretArn: !Ref SecretArn
+        - Statement:
+          - Effect: Allow
+            Action: 'rds-data:ExecuteStatement'
+            Resource: !Ref DBClusterArn
+
 
 Outputs:
   UserPool:

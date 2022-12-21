@@ -16,7 +16,7 @@ Resources:
   # Password Manager API
   MyAPI:
     Type: AWS::Serverless::Api 
-    Description: Main API
+    Description: Password Manager API
     Properties:
       EndpointConfiguration: REGIONAL
       StageName: dev
@@ -36,6 +36,7 @@ Resources:
   RootEndpoint:
     Type: AWS::Serverless::Function
     Properties:
+      Description: Password Manager API GET /.
       Handler: index.handler
       Runtime: nodejs16.x
       InlineCode: >
