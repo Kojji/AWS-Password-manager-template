@@ -124,35 +124,31 @@ Resources:
         const rdsDataService = new AWS.RDSDataService();
 
         exports.handler = (event, context, callback) => {
-            // TODO implement
-            let secretARN = process.env.SecretArn
-            let clusterARN = process.env.DBClusterArn
-            let databaseName = process.env.DBName
+          // TODO implement
+          let secretARN = process.env.SecretArn
+          let clusterARN = process.env.DBClusterArn
+          let databaseName = process.env.DBName
 
-            if(event.triggerSource !== 'PostConfirmation_ConfirmSignUp') {
-              callback(null, event)
-            }
+          if(event.triggerSource !== 'PostConfirmation_ConfirmSignUp') {
+            callback(null, event)
+          }
 
-            let sqlParams = {
-                secretArn: secretARN,
-                resourceArn: clusterARN,
-                sql: `INSERT INTO users (cognito_id, name, email) VALUES ('${event.request.userAttributes.sub}', '${event.request.userAttributes.given_name}', '${event.request.userAttributes.email}');`,
-                database: databaseName,
-                includeResultMetadata: true
-              }
-              
-            rdsDataService.executeStatement(sqlParams, function (err, data) {
-              if (err) {
-                // error
-                console.log(err)
-                callback(null, event)
-              } else {
-                // init
-                console.log(event.request.userAttributes.sub + ' created successfully')
-                callback(null, event)
-              }
+          let sqlParams = {
+              secretArn: secretARN,
+              resourceArn: clusterARN,
+              sql: `INSERT INTO users (cognito_id, name, email) VALUES ('${event.request.userAttributes.sub}', '${event.request.userAttributes.given_name}', '${event.request.userAttributes.email}');`,
+              database: databaseName,
+              includeResultMetadata: true
             }
-          )
+            
+          rdsDataService.executeStatement(sqlParams, function (err, data) {
+            if (err) {
+              console.log(err)
+            } else {
+              console.log(event.request.userAttributes.sub + ' created successfully')
+            }
+          })
+          callback(null, event)
         };
       Environment:
         Variables:
