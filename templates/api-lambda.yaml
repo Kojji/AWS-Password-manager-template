@@ -6,6 +6,15 @@ Parameters:
   UserPoolArn:
     Description: User Pool ARN to be used on authorizer
     Type: String
+  DBClusterArn:
+    Description: Aurora DB cluster Arn.
+    Type: String
+  DBName:
+    Description: Aurora database name.
+    Type: String
+  SecretArn:
+    Description: Secrets Manager Secret ARN
+    Type: String
 
 Globals:
   Function:
@@ -15,7 +24,7 @@ Globals:
 Resources:
   # Password Manager API
   MyAPI:
-    Type: AWS::Serverless::Api 
+    Type: AWS::Serverless::Api
     Description: Password Manager API
     Properties:
       EndpointConfiguration: REGIONAL
@@ -31,7 +40,7 @@ Resources:
         Authorizers:
           MyCognitoAuthorizer:
             UserPoolArn: !Ref UserPoolArn
-  
+
   # GET / - root endpoint
   RootEndpoint:
     Type: AWS::Serverless::Function
@@ -55,4 +64,81 @@ Resources:
             Method: get
             RestApiId: !Ref MyAPI
 
+  # POST /entries - insert new entry endpoint
+  CreateEntryEndpoint:
+    Type: AWS::Serverless::Function
+    Properties:
+      Description: Password Manager API POST /entries.
+      Handler: index.handler
+      Runtime: nodejs16.x
+      InlineCode: >
+        var AWS = require('aws-sdk');
+        const rdsDataService = new AWS.RDSDataService();
 
+        exports.handler = async (event) => {
+          let result = new Promise((res,rej) => {
+            try {
+              if(!event.requestContext.authorizer.claims.sub) {
+                throw new Error("User information not found!");
+              }
+              const requestBody = JSON.parse(event.body);
+          
+              let secretARN = process.env.SecretArn;
+              // if(!event.headers.key) {
+              //     throw new Error("Unable to encrypt password!");
+              // }
+              let enc_key = event.headers.Key;
+
+              let sqlParams = {
+                secretArn: secretARN,
+                resourceArn: process.env.DBClusterArn,
+                sql: `INSERT INTO entries (cognito_id,service,description,link,login,password,marker) VALUES ('${event.requestContext.authorizer.claims.sub}','${requestBody.service}','${requestBody.description}', '${requestBody.link}', '${requestBody.login}', PGP_SYM_ENCRYPT('${requestBody.password}', '${enc_key}'),${requestBody.favorite});`,
+                database: process.env.DBName,
+                includeResultMetadata: true
+              };
+              rdsDataService.executeStatement(sqlParams, function (err, data) {
+                if (err) {
+                  console.log(err);
+                  throw new Error("Error found on creation of new password!");
+                } else {
+                  res({
+                    statusCode: 200,
+                    body: JSON.stringify({
+                      success: true,
+                      message: "Password created sucessfully!"
+                    })
+                  });
+                }
+              });
+            } catch(e) {
+              res({
+                  statusCode: 500,
+                body: JSON.stringify({
+                  success: false,
+                  message: e.message
+                })
+              });
+            }
+          })
+          
+          return result;
+        };
+      Events:
+        RootGet:
+          Type: Api
+          Properties:
+            Path: /entries
+            Method: post
+            RestApiId: !Ref MyAPI
+      Environment:
+        Variables:
+          DBClusterArn: !Ref DBClusterArn
+          DBName: !Ref DBName
+          SecretArn: !Ref SecretArn
+      Policies:
+        - AWSSecretsManagerGetSecretValuePolicy:
+            SecretArn: !Ref SecretArn
+        - Statement:
+            - Effect: Allow
+              Action: "rds-data:ExecuteStatement"
+              Resource: !Ref DBClusterArn

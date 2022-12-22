@@ -54,6 +54,9 @@ Resources:
       TemplateURL: ./api-lambda.yaml
       Parameters: 
         UserPoolArn: !GetAtt Cognito.Outputs.UserPoolArn
+        DBClusterArn: !GetAtt Database.Outputs.DBClusterArn
+        DBName: !Ref DatabaseName
+        SecretArn: !GetAtt Database.Outputs.SecretArn
   # CreateTablesAtDeployment:
   #   Type: AWS::CloudFormation::CustomResource
   #   DependsOn: TableCreationFunction
