@@ -64,6 +64,120 @@ Resources:
             Method: get
             RestApiId: !Ref MyAPI
 
+  # GET /entries - get entry by id endpoint
+  GetEntryEndpoint:
+    Type: AWS::Serverless::Function
+    Properties:
+      Description: Password Manager API GET /entries.
+      Handler: index.handler
+      Runtime: nodejs16.x
+      InlineCode: >
+        var AWS = require('aws-sdk');
+        const rdsDataService = new AWS.RDSDataService();
+
+        exports.handler = async (event, context, callback) => {
+          
+          let responseFailBuild = function(message) {
+            return {
+              statusCode: 500,
+              body: JSON.stringify({
+                success: false,
+                message: message
+              })
+            };
+          };
+          
+          let result = new Promise((res, rej)=>{
+            let secretARN = process.env.SecretArn;
+            if(!event.requestContext.authorizer.claims.sub) {
+              res(responseFailBuild("User information not found!"));
+            }
+            // query validation done in API Gateway 
+            // if(!event.headers.key) {
+            //   res(responseFailBuild("Unable to decrypt password!"));
+            // }
+            let encKey = event.headers.Key;
+            
+            // if(!event.queryStringParameters || !event.queryStringParameters.id) {
+            //   res(responseFailBuild("Password not found!"));
+            // }
+            
+            let sqlParams = {
+              secretArn: secretARN,
+              resourceArn: process.env.DBClusterArn,
+              sql: `SELECT id, cognito_id, service, description, link, login, PGP_SYM_DECRYPT(password::bytea, '${encKey}') as password, marker from entries WHERE id = ${event.queryStringParameters.id} AND cognito_id = '${event.requestContext.authorizer.claims.sub}';`,
+              database: process.env.DBName,
+              includeResultMetadata: true
+            };
+            
+            rdsDataService.executeStatement(sqlParams, function (err, data) {
+              if (err) {
+                // error
+                console.log(err);
+                res(responseFailBuild("Password not found!"));
+              } else {
+                // init
+                var rows = [];
+                var cols =[];
+          
+                // build an array of columns
+                data.columnMetadata.map((v, i) => {
+                  cols.push(v.name);
+                });
+          
+                // build an array of rows: { key=>value }
+                data.records.map((r) => {
+                  var row = {};
+                  r.map((v, i) => {
+                    if (v.stringValue !== undefined) { row[cols[i]] = v.stringValue; }
+                    else if (v.blobValue !== undefined) { row[cols[i]] = v.blobValue; }
+                    else if (v.doubleValue !== undefined) { row[cols[i]] = v.doubleValue; }
+                    else if (v.longValue !== undefined) { row[cols[i]] = v.longValue; }
+                    else if (v.booleanValue !== undefined) { row[cols[i]] = v.booleanValue; }
+                    else { row[cols[i]] = null; }
+                  });
+                  rows.push(row);
+                });
+          
+                if(rows.length === 0) {
+                  res(responseFailBuild("Password not found!"));
+                }
+          
+                res({
+                  statusCode: 200,
+                  body: JSON.stringify({
+                    success: true,
+                    message: "Password found!",
+                    data: rows
+                  })
+                });
+              }
+            });
+          });
+          
+          return result;
+          
+        }
+      Events:
+        RootGet:
+          Type: Api
+          Properties:
+            Path: /entries
+            Method: get
+            RestApiId: !Ref MyAPI
+      Environment:
+        Variables:
+          DBClusterArn: !Ref DBClusterArn
+          DBName: !Ref DBName
+          SecretArn: !Ref SecretArn
+      Policies:
+        - AWSSecretsManagerGetSecretValuePolicy:
+            SecretArn: !Ref SecretArn
+        - Statement:
+            - Effect: Allow
+              Action: "rds-data:ExecuteStatement"
+              Resource: !Ref DBClusterArn
+
   # POST /entries - insert new entry endpoint
   CreateEntryEndpoint:
     Type: AWS::Serverless::Function
@@ -143,11 +257,11 @@ Resources:
               Action: "rds-data:ExecuteStatement"
               Resource: !Ref DBClusterArn
 
-  # GET /entries - list user entries endpoint
+  # GET /list - list user entries endpoint
   ListEntryEndpoint:
     Type: AWS::Serverless::Function
     Properties:
-      Description: Password Manager API GET /entries.
+      Description: Password Manager API GET /list.
       Handler: index.handler
       Runtime: nodejs16.x
       InlineCode: >
@@ -276,6 +390,128 @@ Resources:
           Type: Api
           Properties:
             Path: /list
+            Method: get
+            RestApiId: !Ref MyAPI
+      Environment:
+        Variables:
+          DBClusterArn: !Ref DBClusterArn
+          DBName: !Ref DBName
+          SecretArn: !Ref SecretArn
+      Policies:
+        - AWSSecretsManagerGetSecretValuePolicy:
+            SecretArn: !Ref SecretArn
+        - Statement:
+            - Effect: Allow
+              Action: "rds-data:ExecuteStatement"
+              Resource: !Ref DBClusterArn
+
+  # GET /search - search user entries endpoint
+  SearchEntryEndpoint:
+    Type: AWS::Serverless::Function
+    Properties:
+      Description: Password Manager API GET /search.
+      Handler: index.handler
+      Runtime: nodejs16.x
+      InlineCode: >
+        var AWS = require('aws-sdk');
+        const rdsDataService = new AWS.RDSDataService();
+
+        exports.handler = async (event, context, callback) => {
+          
+          let responseFailBuild = function(message) {
+            return {
+              statusCode: 500,
+              headers: { 
+                "Access-Control-Allow-Headers" : "Content-Type",
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Credentials": true,
+                "Access-Control-Allow-Methods": "OPTIONS,POST,GET"
+              },
+              body: JSON.stringify({
+                success: false,
+                message: message
+              })
+            };
+          };
+          
+          let result = new Promise((res, rej)=>{
+            let secretARN = process.env.SecretArn;
+            if(!event.requestContext.authorizer.claims.sub) {
+              res(responseFailBuild("User information not found!"));
+            }
+            
+            let encKey = event.headers.Key;
+            
+            if(event.queryStringParameters.perPage > 50) {
+              res(responseFailBuild("Unable to list more than 50 items per page"));
+            }
+            
+            let perPage = event.queryStringParameters.perPage;
+            let search = event.queryStringParameters.search;
+            
+            let sqlParams = {
+              secretArn: secretARN,
+              resourceArn: process.env.DBClusterArn,
+              sql: `SELECT id, cognito_id, service, description, link, login, PGP_SYM_DECRYPT(password::bytea, '${encKey}') as password, marker from entries WHERE cognito_id = '${event.requestContext.authorizer.claims.sub}' AND (service ILIKE '%${search}%' OR description ILIKE '%${search}%' OR login ILIKE '%${search}%') LIMIT ${perPage};`,
+              database: process.env.DBName,
+              includeResultMetadata: true
+            };
+            
+            rdsDataService.executeStatement(sqlParams, function (err, data) {
+              if (err) {
+                // error
+                console.log(err);
+                res(responseFailBuild("Password not found!"));
+              } else {
+                // init
+                var rows = [];
+                var cols =[];
+          
+                // build an array of columns
+                data.columnMetadata.map((v, i) => {
+                  cols.push(v.name);
+                });
+          
+                // build an array of rows: { key=>value }
+                data.records.map((r) => {
+                  var row = {};
+                  r.map((v, i) => {
+                    if (v.stringValue !== undefined) { row[cols[i]] = v.stringValue; }
+                    else if (v.blobValue !== undefined) { row[cols[i]] = v.blobValue; }
+                    else if (v.doubleValue !== undefined) { row[cols[i]] = v.doubleValue; }
+                    else if (v.longValue !== undefined) { row[cols[i]] = v.longValue; }
+                    else if (v.booleanValue !== undefined) { row[cols[i]] = v.booleanValue; }
+                    else { row[cols[i]] = null; }
+                  });
+                  rows.push(row);
+                });
+          
+                res({
+                  statusCode: 200,
+                  headers: { 
+                    "Access-Control-Allow-Headers" : "Content-Type",
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Allow-Credentials": true,
+                    "Access-Control-Allow-Methods": "OPTIONS,POST,GET"
+                  },
+                  body: JSON.stringify({
+                    success: true,
+                    message: "Passwords found!",
+                    data: rows
+                  })
+                });
+              }
+            });
+          });
+          
+          return result;
+          
+        }
+      Events:
+        RootGet:
+          Type: Api
+          Properties:
+            Path: /search
             Method: get
             RestApiId: !Ref MyAPI
       Environment:
