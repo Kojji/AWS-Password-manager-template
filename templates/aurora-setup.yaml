@@ -55,7 +55,7 @@ Resources:
         AutoPause: true
         MinCapacity: 2
         MaxCapacity: 4
-        SecondsUntilAutoPause: 3600
+        SecondsUntilAutoPause: 1800
 
   # function to create tables:
   TableCreationFunction:
