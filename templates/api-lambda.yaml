@@ -15,6 +15,10 @@ Parameters:
   SecretArn:
     Description: Secrets Manager Secret ARN
     Type: String
+  FrontEndURL:
+    Description: FrontEnd URL to enable CORS
+    Type: String
+    Default: "*"
 
 Globals:
   Function:
@@ -30,9 +34,9 @@ Resources:
       EndpointConfiguration: REGIONAL
       StageName: dev
       Cors:
-        AllowMethods: "'GET, OPTIONS'"
+        AllowMethods: "'GET, POST, PUT, DELETE, OPTIONS'"
         AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,Key,X-Api-Key,X-Amz-Security-Token'"
-        AllowOrigin: "'*'"
+        AllowOrigin: !Sub "'${FrontEndURL}'"
         MaxAge: "'500'"
       Auth:
         AddDefaultAuthorizerToCorsPreflight: false
@@ -159,7 +163,7 @@ Resources:
           
         }
       Events:
-        RootGet:
+        GETEntry:
           Type: Api
           Properties:
             Path: /entries
@@ -238,7 +242,7 @@ Resources:
           return result;
         };
       Events:
-        RootGet:
+        POSTEntry:
           Type: Api
           Properties:
             Path: /entries
@@ -256,6 +260,88 @@ Resources:
             - Effect: Allow
               Action: "rds-data:ExecuteStatement"
               Resource: !Ref DBClusterArn
+
+  # DELETE /entries - delete user entry by id endpoint
+  DeleteEntryEndpoint:
+    Type: AWS::Serverless::Function
+    Properties:
+      Description: Password Manager API DELETE /entries.
+      Handler: index.handler
+      Runtime: nodejs16.x
+      InlineCode: >
+        var AWS = require('aws-sdk');
+        const rdsDataService = new AWS.RDSDataService();
+
+        exports.handler = async (event, context, callback) => {
+          
+          let responseFailBuild = function(message) {
+            return {
+              statusCode: 500,
+              body: JSON.stringify({
+                success: false,
+                message: message
+              })
+            };
+          };
+          
+          let result = new Promise((res, rej)=>{
+            let secretARN = process.env.SecretArn;
+            if(!event.requestContext.authorizer.claims.sub) {
+              res(responseFailBuild("User information not found!"));
+            }
+            
+            let sqlParams = {
+              secretArn: secretARN,
+              resourceArn: process.env.DBClusterArn,
+              sql: `DELETE FROM entries WHERE id = ${event.queryStringParameters.id} AND cognito_id = '${event.requestContext.authorizer.claims.sub}';`,
+              database: process.env.DBName,
+              includeResultMetadata: true
+            };
+            
+            rdsDataService.executeStatement(sqlParams, function (err, data) {
+              if (err) {
+                // error
+                console.log(err);
+                res(responseFailBuild("Password not found!"));
+              } else {
+                console.log(data);
+                if(data.numberOfRecordsUpdated === 0) {
+                  res(responseFailBuild("Password not found!"));
+                }
+                res({
+                  statusCode: 200,
+                  body: JSON.stringify({
+                    success: true,
+                    message: "Password removed successfully!"
+                  })
+                });
+              }
+            });
+          });
+          
+          return result;
+          
+        }
+      Events:
+        DELETEEntry:
+          Type: Api
+          Properties:
+            Path: /entries
+            Method: delete
+            RestApiId: !Ref MyAPI
+      Environment:
+        Variables:
+          DBClusterArn: !Ref DBClusterArn
+          DBName: !Ref DBName
+          SecretArn: !Ref SecretArn
+      Policies:
+        - AWSSecretsManagerGetSecretValuePolicy:
+            SecretArn: !Ref SecretArn
+        - Statement:
+            - Effect: Allow
+              Action: "rds-data:ExecuteStatement"
+              Resource: !Ref DBClusterArn
+
 
   # GET /list - list user entries endpoint
   ListEntryEndpoint:
@@ -277,7 +363,7 @@ Resources:
                 "Access-Control-Allow-Headers" : "Content-Type",
                 "Access-Control-Allow-Origin": "*",
                 "Access-Control-Allow-Credentials": true,
-                "Access-Control-Allow-Methods": "OPTIONS,POST,GET"
+                "Access-Control-Allow-Methods": "OPTIONS,POST,PUT,DELETE,GET"
               },
               body: JSON.stringify({
                 success: false,
@@ -386,7 +472,7 @@ Resources:
           
         }
       Events:
-        RootGet:
+        GETList:
           Type: Api
           Properties:
             Path: /list
@@ -425,7 +511,7 @@ Resources:
                 "Access-Control-Allow-Headers" : "Content-Type",
                 "Access-Control-Allow-Origin": "*",
                 "Access-Control-Allow-Credentials": true,
-                "Access-Control-Allow-Methods": "OPTIONS,POST,GET"
+                "Access-Control-Allow-Methods": "OPTIONS,POST,GET,PUT,DELETE"
               },
               body: JSON.stringify({
                 success: false,
@@ -508,7 +594,7 @@ Resources:
           
         }
       Events:
-        RootGet:
+        GETSearch:
           Type: Api
           Properties:
             Path: /search

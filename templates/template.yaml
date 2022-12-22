@@ -24,6 +24,10 @@ Parameters:
     MaxLength: '16'
     AllowedPattern: '[a-zA-Z0-9_]+'
     ConstraintDescription: Must be between 2 to 16 alphanumeric characters.
+  FrontEndURL:
+    Description: FrontEnd URL to enable CORS
+    Type: String
+    Default: "*"
 
 Resources:
   Database:
@@ -57,6 +61,7 @@ Resources:
         DBClusterArn: !GetAtt Database.Outputs.DBClusterArn
         DBName: !Ref DatabaseName
         SecretArn: !GetAtt Database.Outputs.SecretArn
+        FrontEndURL: !Sub '${FrontEndURL}'
   # CreateTablesAtDeployment:
   #   Type: AWS::CloudFormation::CustomResource
   #   DependsOn: TableCreationFunction
