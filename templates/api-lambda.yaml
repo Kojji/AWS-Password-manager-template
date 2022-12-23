@@ -261,6 +261,90 @@ Resources:
               Action: "rds-data:ExecuteStatement"
               Resource: !Ref DBClusterArn
 
+  # UPDATE /entries - update user entry by id endpoint
+  UpdateEntryEndpoint:
+    Type: AWS::Serverless::Function
+    Properties:
+      Description: Password Manager API PUT /entries.
+      Handler: index.handler
+      Runtime: nodejs16.x
+      InlineCode: >
+        var AWS = require('aws-sdk');
+        const rdsDataService = new AWS.RDSDataService();
+
+        exports.handler = async (event) => {
+          let result = new Promise((res,rej) => {
+            try {
+              if(!event.requestContext.authorizer.claims.sub) {
+                throw new Error("User information not found!");
+              }
+              const requestBody = JSON.parse(event.body);
+          
+              let secretARN = process.env.SecretArn;
+              // if(!event.headers.key) {
+              //     throw new Error("Unable to encrypt password!");
+              // }
+              let enc_key = event.headers.Key;
+
+              // if(!event.queryStringParameters || !event.queryStringParameters.id) {
+              //   res(responseFailBuild("Password not found!"));
+              // }
+
+              let sqlParams = {
+                secretArn: secretARN,
+                resourceArn: process.env.DBClusterArn,
+                sql: `UPDATE entries SET (service,description,link,login,password,marker) = ('${requestBody.service}','${requestBody.description}', '${requestBody.link}', '${requestBody.login}', PGP_SYM_ENCRYPT('${requestBody.password}', '${enc_key}'),${requestBody.marker}) WHERE id = ${event.queryStringParameters.id} AND cognito_id = '${event.requestContext.authorizer.claims.sub}';`,
+                database: process.env.DBName,
+                includeResultMetadata: true
+              };
+              rdsDataService.executeStatement(sqlParams, function (err, data) {
+                if (err) {
+                  console.log(err);
+                  throw new Error("Error found on creation of new password!");
+                } else {
+                  console.log(data)
+                  res({
+                    statusCode: 200,
+                    body: JSON.stringify({
+                      success: true,
+                      message: "Password updated sucessfully!"
+                    })
+                  });
+                }
+              });
+            } catch(e) {
+              res({
+                  statusCode: 500,
+                body: JSON.stringify({
+                  success: false,
+                  message: e.message
+                })
+              });
+            }
+          })
+          
+          return result;
+        };
+      Events:
+        UPDATEEntry:
+          Type: Api
+          Properties:
+            Path: /entries
+            Method: put
+            RestApiId: !Ref MyAPI
+      Environment:
+        Variables:
+          DBClusterArn: !Ref DBClusterArn
+          DBName: !Ref DBName
+          SecretArn: !Ref SecretArn
+      Policies:
+        - AWSSecretsManagerGetSecretValuePolicy:
+            SecretArn: !Ref SecretArn
+        - Statement:
+            - Effect: Allow
+              Action: "rds-data:ExecuteStatement"
+              Resource: !Ref DBClusterArn
+
   # DELETE /entries - delete user entry by id endpoint
   DeleteEntryEndpoint:
     Type: AWS::Serverless::Function
@@ -341,7 +425,6 @@ Resources:
             - Effect: Allow
               Action: "rds-data:ExecuteStatement"
               Resource: !Ref DBClusterArn
-
 
   # GET /list - list user entries endpoint
   ListEntryEndpoint:
